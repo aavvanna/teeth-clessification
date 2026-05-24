@@ -1,14 +1,13 @@
 """
-Конвертация обученной модели EfficientNet-B0 → ONNX.
+Конвертация обученной модели EfficientNet-B0 → ONNX (один файл).
 
 Запуск:
     python export_to_onnx.py
     python export_to_onnx.py --checkpoint best_v1a.pth --out model.onnx
-
-После конвертации положите model.onnx рядом с index.html в репозиторий.
 """
 
 import argparse
+import os
 from pathlib import Path
 
 import torch
@@ -28,7 +27,6 @@ def build_model(num_classes: int) -> nn.Module:
 
 def load_checkpoint(model: nn.Module, path: Path) -> nn.Module:
     state = torch.load(path, map_location="cpu")
-    # Поддержка разных форматов чекпоинтов
     if isinstance(state, dict):
         for key in ("model_state_dict", "state_dict"):
             if key in state:
@@ -46,6 +44,12 @@ def export(checkpoint: Path, out: Path) -> None:
 
     dummy = torch.zeros(1, 3, IMG_SIZE, IMG_SIZE)
 
+    # Удаляем старые файлы если есть
+    for f in [out, Path(str(out) + ".data")]:
+        if f.exists():
+            os.remove(f)
+            print(f"Удалён старый файл: {f.name}")
+
     print(f"Экспортирую в ONNX: {out}")
     torch.onnx.export(
         model,
@@ -54,18 +58,28 @@ def export(checkpoint: Path, out: Path) -> None:
         input_names=["input"],
         output_names=["logits"],
         dynamic_axes={"input": {0: "batch"}, "logits": {0: "batch"}},
-        opset_version=17,
+        opset_version=14,          # 14 не требует onnxscript и не создаёт .data
+        do_constant_folding=True,
     )
 
+    # Проверяем что .data не создался
+    data_file = Path(str(out) + ".data")
+    if data_file.exists():
+        raise RuntimeError(
+            f"Всё равно создался {data_file.name}.\n"
+            "Попробуйте: pip install --upgrade torch torchvision"
+        )
+
     size_mb = out.stat().st_size / 1024 / 1024
-    print(f"Готово! Размер файла: {size_mb:.1f} МБ")
-    print(f"\nПоложите {out.name} рядом с index.html и запушьте в репозиторий.")
+    print(f"\nГотово! Один файл: {out.name} ({size_mb:.1f} МБ)")
+    print("Удалите старые model.onnx и model.onnx.data из репозитория,")
+    print("добавьте новый model.onnx и запушьте.")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--checkpoint", default="best_v1c.pth", help="Путь к .pth файлу")
-    parser.add_argument("--out", default="model.onnx", help="Выходной ONNX файл")
+    parser.add_argument("--checkpoint", default="best_v1c.pth")
+    parser.add_argument("--out", default="model.onnx")
     args = parser.parse_args()
 
     checkpoint = Path(args.checkpoint)
