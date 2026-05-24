@@ -58,7 +58,7 @@ def export(checkpoint: Path, out: Path) -> None:
         input_names=["input"],
         output_names=["logits"],
         dynamic_axes={"input": {0: "batch"}, "logits": {0: "batch"}},
-        opset_version=14,          # 14 не требует onnxscript и не создаёт .data
+        opset_version=11,          # 11 максимально совместим с onnxruntime-web
         do_constant_folding=True,
     )
 
